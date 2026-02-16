@@ -1,0 +1,5 @@
+{
+  "name": "IELTS Reading Prep & Vocab",
+  "description": "An interactive IELTS Academic Reading practice test application. Features full reading passages, interactive questions, instant Russian translation for any word via Gemini, and a vocabulary practice list.",
+  "requestFramePermissions": []
+}
