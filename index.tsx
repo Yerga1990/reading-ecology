@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import './index.css';
 import { 
   BookOpen, 
   Library, 
@@ -13,14 +14,22 @@ import {
   Trophy, 
   Play, 
   WifiOff, 
-  Sparkles
+  Sparkles,
+  LineChart as LineChartIcon
 } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { PASSAGES, LOCAL_DICTIONARY } from './constants';
 import { AppTab, Passage, Question, SavedWord, QuizItem } from './types';
 
 // --- Assets: Background Image ---
-// REPLACE THIS URL with the direct link to your uploaded image
-const BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=2070&auto=format&fit=crop";
+// Using a local gradient background instead of external image
+const BackgroundImage = () => {
+  return (
+    <div className="fixed inset-0 z-[-1] overflow-hidden bg-gradient-to-br from-indigo-100 via-white to-purple-100">
+      <div className="absolute inset-0 bg-white/30 backdrop-blur-[1px] z-10"></div>
+    </div>
+  );
+};
 
 // --- Helper: Spaced Repetition Logic (Leitner System) ---
 const REVIEW_INTERVALS = [0, 1, 3, 7, 14, 30]; // Days for each box
@@ -32,26 +41,16 @@ const getNextReviewDate = (box: number): number => {
 
 // --- Helper: Text Processing ---
 const splitParagraphIntoWords = (text: string) => {
-  return text.split(/(\s+)/).map((segment, i) => {
-    if (segment.trim() === '') return { text: segment, id: i, isWord: false };
-    // Keep original text for display
-    // Cleanup for lookup: lowercase, remove possessives ('s), remove surrounding punctuation
-    const cleanWord = segment.toLowerCase().replace(/['’]s$/, '').replace(/^[^\wА-Яа-я]+|[^\wА-Яа-я]+$/g, ''); 
+  // Split by word boundaries but keep punctuation as separate tokens
+  const tokens = text.match(/[\wА-Яа-я]+(?:['’][\wА-Яа-я]+)*|[^\wА-Яа-я\s]+|\s+/g) || [];
+  
+  return tokens.map((segment, i) => {
+    if (segment.trim() === '' || /^[^\wА-Яа-я]+$/.test(segment)) {
+      return { text: segment, id: i, isWord: false };
+    }
+    const cleanWord = segment.toLowerCase().replace(/['’]s$/, ''); 
     return { text: segment, word: cleanWord, isWord: true, id: i };
   });
-};
-
-const BackgroundImage = () => {
-  return (
-    <div className="fixed inset-0 z-[-1] overflow-hidden bg-gray-100">
-      <div className="absolute inset-0 bg-white/10 backdrop-blur-[1px] z-10"></div>
-      <img
-        src={BACKGROUND_IMAGE_URL}
-        alt="App Background"
-        className="absolute w-full h-full object-cover animate-in fade-in duration-1000"
-      />
-    </div>
-  );
 };
 
 const App = () => {
@@ -61,10 +60,26 @@ const App = () => {
     const saved = localStorage.getItem('ielts_vocab_words');
     return saved ? JSON.parse(saved) : [];
   });
+  const [completedPassages, setCompletedPassages] = useState<number[]>(() => {
+    const saved = localStorage.getItem('ielts_completed_passages');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [quizScores, setQuizScores] = useState<{ timestamp: number, score: number, total: number }[]>(() => {
+    const saved = localStorage.getItem('ielts_quiz_scores');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   useEffect(() => {
     localStorage.setItem('ielts_vocab_words', JSON.stringify(savedWords));
   }, [savedWords]);
+
+  useEffect(() => {
+    localStorage.setItem('ielts_completed_passages', JSON.stringify(completedPassages));
+  }, [completedPassages]);
+
+  useEffect(() => {
+    localStorage.setItem('ielts_quiz_scores', JSON.stringify(quizScores));
+  }, [quizScores]);
 
   const activePassage = PASSAGES.find(p => p.id === activePassageId) || PASSAGES[0];
 
@@ -83,6 +98,16 @@ const App = () => {
     }));
   };
 
+  const handleTogglePassageCompletion = (id: number) => {
+    setCompletedPassages(prev => 
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
+  };
+
+  const handleQuizComplete = (score: number, total: number) => {
+    setQuizScores(prev => [...prev, { timestamp: Date.now(), score, total }]);
+  };
+
   const renderContent = () => {
     switch (currentTab) {
       case AppTab.READING:
@@ -92,6 +117,8 @@ const App = () => {
             activePassage={activePassage} 
             onSelectPassage={setActivePassageId}
             onSaveWord={handleSaveWord}
+            completedPassages={completedPassages}
+            onTogglePassageCompletion={handleTogglePassageCompletion}
           />
         );
       case AppTab.VOCABULARY:
@@ -103,7 +130,9 @@ const App = () => {
           />
         );
       case AppTab.QUIZ:
-        return <QuizView passages={PASSAGES} />;
+        return <QuizView passages={PASSAGES} onQuizComplete={handleQuizComplete} />;
+      case AppTab.PROGRESS:
+        return <ProgressView completedPassages={completedPassages} savedWords={savedWords} quizScores={quizScores} />;
       default:
         return null;
     }
@@ -119,15 +148,18 @@ const App = () => {
             <GraduationCap className="w-8 h-8 text-indigo-700" />
             <span className="text-xl font-bold tracking-tight text-gray-900 hidden sm:inline">IELTS Prep</span>
           </div>
-          <nav className="flex items-center space-x-1 bg-white/40 p-1 rounded-lg backdrop-blur-sm">
-            <button onClick={() => setCurrentTab(AppTab.READING)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTab === AppTab.READING ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
+          <nav className="flex items-center space-x-1 bg-white/40 p-1 rounded-lg backdrop-blur-sm overflow-x-auto">
+            <button onClick={() => setCurrentTab(AppTab.READING)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${currentTab === AppTab.READING ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
               <div className="flex items-center space-x-2"><BookOpen className="w-4 h-4" /><span>Reading</span></div>
             </button>
-            <button onClick={() => setCurrentTab(AppTab.VOCABULARY)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTab === AppTab.VOCABULARY ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
+            <button onClick={() => setCurrentTab(AppTab.VOCABULARY)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${currentTab === AppTab.VOCABULARY ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
               <div className="flex items-center space-x-2"><Brain className="w-4 h-4" /><span>My Vocab</span></div>
             </button>
-            <button onClick={() => setCurrentTab(AppTab.QUIZ)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTab === AppTab.QUIZ ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
+            <button onClick={() => setCurrentTab(AppTab.QUIZ)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${currentTab === AppTab.QUIZ ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
               <div className="flex items-center space-x-2"><FileQuestion className="w-4 h-4" /><span>AI Quiz</span></div>
+            </button>
+            <button onClick={() => setCurrentTab(AppTab.PROGRESS)} className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${currentTab === AppTab.PROGRESS ? 'bg-white/80 text-indigo-700 shadow-sm' : 'text-gray-700 hover:text-indigo-600 hover:bg-white/30'}`}>
+              <div className="flex items-center space-x-2"><LineChartIcon className="w-4 h-4" /><span>Progress</span></div>
             </button>
           </nav>
         </div>
@@ -139,8 +171,10 @@ const App = () => {
   );
 };
 
-const ReadingView = ({ passages, activePassage, onSelectPassage, onSaveWord }: any) => {
+const ReadingView = ({ passages, activePassage, onSelectPassage, onSaveWord, completedPassages, onTogglePassageCompletion }: any) => {
   const [selectedWordData, setSelectedWordData] = useState<any>(null);
+  const isCompleted = completedPassages.includes(activePassage.id);
+
   return (
     <div className="flex flex-col lg:flex-row gap-8">
       <div className="flex-1 bg-white/60 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 flex flex-col h-fit">
@@ -150,7 +184,9 @@ const ReadingView = ({ passages, activePassage, onSelectPassage, onSaveWord }: a
             onChange={(e) => onSelectPassage(Number(e.target.value))} 
             className="w-full sm:w-auto pl-3 pr-10 py-2 border border-white/60 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-50 outline-none bg-white/50 backdrop-blur-sm hover:bg-white/70 transition-colors"
           >
-            {passages.map((p: any) => (<option key={p.id} value={p.id}>Passage {p.id}: {p.title}</option>))}
+            {passages.map((p: any) => (<option key={p.id} value={p.id}>
+              {completedPassages.includes(p.id) ? '✓ ' : ''}Passage {p.id}: {p.title}
+            </option>))}
           </select>
           <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest bg-white/50 px-3 py-1.5 rounded-full border border-white/60 shadow-sm">
              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
@@ -158,7 +194,16 @@ const ReadingView = ({ passages, activePassage, onSelectPassage, onSaveWord }: a
           </div>
         </div>
         <div className="p-8 md:p-12 leading-relaxed text-lg text-gray-900 font-serif select-none">
-          <h1 className="text-4xl font-black mb-8 leading-tight tracking-tight text-gray-900 drop-shadow-sm">{activePassage.title}</h1>
+          <div className="flex justify-between items-start mb-8 gap-4">
+            <h1 className="text-4xl font-black leading-tight tracking-tight text-gray-900 drop-shadow-sm">{activePassage.title}</h1>
+            <button 
+              onClick={() => onTogglePassageCompletion(activePassage.id)}
+              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${isCompleted ? 'bg-green-100 text-green-700 border border-green-200 shadow-sm' : 'bg-white/50 text-gray-500 border border-white/60 hover:bg-white/80'}`}
+            >
+              <Check size={16} className={isCompleted ? 'text-green-600' : 'text-gray-400'} />
+              {isCompleted ? 'Completed' : 'Mark Complete'}
+            </button>
+          </div>
           {activePassage.content.map((paragraph: string, pIdx: number) => (
             <p key={pIdx} className="mb-8 last:mb-0">
               {splitParagraphIntoWords(paragraph).map((item) => (
@@ -245,20 +290,46 @@ const TranslationModal = ({ word, context, onClose, onSave }: any) => {
   const [saved, setSaved] = useState(false);
   
   // Strict cleanup for dictionary match
-  const cleanWord = word.toLowerCase().replace(/['’]s$/, '').replace(/^[^\wА-Яа-я]+|[^\wА-Яа-я]+$/g, '');
-  const entry = LOCAL_DICTIONARY[cleanWord];
+  const cleanWord = word.toLowerCase().replace(/^[^\wА-Яа-я]+|[^\wА-Яа-я]+$/g, '');
+  
+  const getEntry = (w: string) => {
+    if (LOCAL_DICTIONARY[w]) return LOCAL_DICTIONARY[w];
+    
+    // Simple stemming for common suffixes
+    const variations = [
+      w.replace(/s$/, ''),
+      w.replace(/es$/, ''),
+      w.replace(/ed$/, ''),
+      w.replace(/ing$/, ''),
+      w.replace(/ly$/, ''),
+      w.replace(/ies$/, 'y'),
+      w.replace(/ied$/, 'y'),
+      w.replace(/ness$/, ''),
+      w.replace(/ment$/, ''),
+      w.replace(/ion$/, ''),
+      w.replace(/ive$/, ''),
+      w.replace(/able$/, ''),
+      w.replace(/ible$/, ''),
+    ];
+    
+    for (const v of variations) {
+      if (v.length > 2 && LOCAL_DICTIONARY[v]) return LOCAL_DICTIONARY[v];
+    }
+    
+    return null;
+  };
+
+  const entry = getEntry(cleanWord);
   
   const data = entry ? {
     translation: entry.t,
     definition: entry.d,
-    synonyms: entry.s
+    synonyms: (entry.s && entry.s.length > 0) ? entry.s : [`similar_${cleanWord}`, `related_${cleanWord}`]
   } : {
-    translation: `Перевод для "${word}"`,
-    definition: "Tap to save and review later.",
-    synonyms: []
+    translation: `Перевод: ${cleanWord}`,
+    definition: `Academic definition for "${cleanWord}" in the context of IELTS reading.`,
+    synonyms: [`synonym1_${cleanWord}`, `synonym2_${cleanWord}`]
   };
-
-  const isPrebaked = !!entry;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200" onClick={onClose}>
@@ -270,15 +341,15 @@ const TranslationModal = ({ word, context, onClose, onSave }: any) => {
           <X size={20} />
         </button>
         <div className="flex items-center gap-4 mb-8">
-           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg ${isPrebaked ? 'bg-indigo-600' : 'bg-gray-400'}`}>
+           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg ${entry ? 'bg-indigo-600' : 'bg-gray-400'}`}>
               <Library size={28} />
            </div>
            <div>
               <h3 className="text-3xl font-black capitalize tracking-tight text-gray-900 leading-none">{cleanWord}</h3>
               <div className="mt-2 flex items-center gap-2">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm ${isPrebaked ? 'bg-green-100/80 text-green-800' : 'bg-gray-100/80 text-gray-600'}`}>
-                  {isPrebaked ? <Check size={12} /> : <WifiOff size={12} />}
-                  {isPrebaked ? 'INSTANT OFFLINE' : 'OFFLINE MODE'}
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm ${entry ? 'bg-green-100/80 text-green-800' : 'bg-gray-100/80 text-gray-600'}`}>
+                  {entry ? <Check size={12} /> : <WifiOff size={12} />}
+                  {entry ? 'INSTANT OFFLINE' : 'OFFLINE MODE'}
                 </span>
               </div>
            </div>
@@ -327,7 +398,7 @@ const TranslationModal = ({ word, context, onClose, onSave }: any) => {
               setTimeout(onClose, 800); 
             }} 
             disabled={saved} 
-            className={`w-full py-6 rounded-2xl font-black text-lg transition-all transform active:scale-[0.98] shadow-xl ${saved ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200/50'}`}
+            className={`w-full py-6 rounded-2xl font-black text-lg transition-all transform active:scale-[0.98] shadow-xl ${saved ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200/50'} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {saved ? 'Word Saved!' : 'Add to My Dictionary'}
           </button>
@@ -337,7 +408,7 @@ const TranslationModal = ({ word, context, onClose, onSave }: any) => {
   );
 };
 
-const QuizView = ({ passages }: { passages: Passage[] }) => {
+const QuizView = ({ passages, onQuizComplete }: { passages: Passage[], onQuizComplete: (score: number, total: number) => void }) => {
   const [stage, setStage] = useState<'SETUP' | 'LOADING' | 'PLAYING' | 'RESULT'>('SETUP');
   const [selectedPassageId, setSelectedPassageId] = useState(passages[0].id);
   const [questions, setQuestions] = useState<QuizItem[]>([]);
@@ -346,6 +417,12 @@ const QuizView = ({ passages }: { passages: Passage[] }) => {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const autoNextTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (stage === 'RESULT') {
+      onQuizComplete(score, questions.length);
+    }
+  }, [stage]);
 
   const generateQuiz = async () => {
     const passage = passages.find(p => p.id === selectedPassageId);
@@ -617,6 +694,92 @@ const VocabularyView = ({ words, onUpdateProgress, onDeleteWord }: any) => {
               </div>
             </div>
           ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ProgressView = ({ completedPassages, savedWords, quizScores }: any) => {
+  const totalPassages = PASSAGES.length;
+  const completedCount = completedPassages.length;
+  const wordsLearned = savedWords.filter((w: any) => w.leitnerBox > 0).length;
+  const totalWords = savedWords.length;
+  
+  const averageScore = quizScores.length > 0 
+    ? Math.round(quizScores.reduce((acc: number, curr: any) => acc + (curr.score / curr.total) * 100, 0) / quizScores.length) 
+    : 0;
+
+  const chartData = quizScores.map((s: any, i: number) => ({
+    name: `Quiz ${i + 1}`,
+    score: Math.round((s.score / s.total) * 100),
+    date: new Date(s.timestamp).toLocaleDateString()
+  }));
+
+  return (
+    <div className="max-w-5xl mx-auto py-8 space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white/60 backdrop-blur-md rounded-3xl p-8 border border-white/40 shadow-xl flex flex-col items-center text-center">
+          <BookOpen className="w-12 h-12 text-indigo-600 mb-4" />
+          <h3 className="text-5xl font-black text-gray-900 mb-2">{completedCount} <span className="text-2xl text-gray-500">/ {totalPassages}</span></h3>
+          <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Passages Read</p>
+        </div>
+        <div className="bg-white/60 backdrop-blur-md rounded-3xl p-8 border border-white/40 shadow-xl flex flex-col items-center text-center">
+          <Brain className="w-12 h-12 text-green-600 mb-4" />
+          <h3 className="text-5xl font-black text-gray-900 mb-2">{wordsLearned} <span className="text-2xl text-gray-500">/ {totalWords}</span></h3>
+          <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Words Mastered</p>
+        </div>
+        <div className="bg-white/60 backdrop-blur-md rounded-3xl p-8 border border-white/40 shadow-xl flex flex-col items-center text-center">
+          <Trophy className="w-12 h-12 text-yellow-500 mb-4" />
+          <h3 className="text-5xl font-black text-gray-900 mb-2">{averageScore}%</h3>
+          <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Avg Quiz Score</p>
+        </div>
+      </div>
+
+      <div className="bg-white/60 backdrop-blur-md rounded-3xl p-8 md:p-12 border border-white/40 shadow-xl">
+        <h2 className="text-2xl font-black text-gray-900 mb-8 flex items-center gap-3">
+          <LineChartIcon className="text-indigo-600" />
+          Recent Quiz Performance
+        </h2>
+        {quizScores.length === 0 ? (
+          <div className="text-center py-12 text-gray-500 font-medium">
+            Take a quiz to see your performance history!
+          </div>
+        ) : (
+          <div className="space-y-8">
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                  <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                    labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+                  />
+                  <Line type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={3} dot={{ r: 4, fill: '#4f46e5', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-4">
+              {quizScores.slice().reverse().map((score: any, idx: number) => (
+                <div key={idx} className="flex items-center justify-between p-4 bg-white/40 rounded-2xl border border-white/50">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-lg">
+                      {Math.round((score.score / score.total) * 100)}%
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900">Vocabulary Quiz</p>
+                      <p className="text-xs text-gray-500 font-medium">{new Date(score.timestamp).toLocaleDateString()} at {new Date(score.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-black text-gray-900 text-xl">{score.score} <span className="text-sm text-gray-500">/ {score.total}</span></p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

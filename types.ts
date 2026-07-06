@@ -32,7 +32,8 @@ export interface SavedWord {
 export enum AppTab {
   READING = 'READING',
   VOCABULARY = 'VOCABULARY',
-  QUIZ = 'QUIZ'
+  QUIZ = 'QUIZ',
+  PROGRESS = 'PROGRESS'
 }
 
 export interface QuizItem {
