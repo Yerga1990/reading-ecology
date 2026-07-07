@@ -4,6 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IELTS Reading Prep & Vocab</title>
+  <script>
+    try {
+      if (typeof window !== 'undefined') {
+        let currentFetch = window.fetch;
+        try {
+          Object.defineProperty(window, 'fetch', {
+            get: () => currentFetch,
+            set: (v) => { currentFetch = v; },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (err) {
+          // If defined on prototype/getter-only
+          const desc = Object.getOwnPropertyDescriptor(window, 'fetch');
+          if (!desc || desc.configurable) {
+            Object.defineProperty(window, 'fetch', {
+              value: currentFetch,
+              writable: true,
+              configurable: true,
+              enumerable: true
+            });
+          }
+        }
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div id="root"></div>

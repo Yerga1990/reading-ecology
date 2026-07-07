@@ -236,6 +236,8 @@ const ReadingView = ({ passages, activePassage, onSelectPassage, onSaveWord, com
   );
 };
 
+
+
 const QuestionsPanel = ({ passage }: { passage: Passage }) => {
   return (
     <div className="bg-white/70 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 overflow-hidden flex flex-col lg:max-h-[calc(100vh-140px)]">
@@ -247,6 +249,7 @@ const QuestionsPanel = ({ passage }: { passage: Passage }) => {
         <div className="bg-indigo-50/60 p-4 rounded-xl border border-indigo-100/50 text-xs font-semibold text-indigo-800 italic leading-relaxed">
           {passage.questionInstruction}
         </div>
+
         {passage.questions.map((q) => (
           <div key={q.id} className="space-y-4">
             <div className="flex gap-4">
@@ -321,15 +324,80 @@ const TranslationModal = ({ word, context, onClose, onSave }: any) => {
 
   const entry = getEntry(cleanWord);
   
-  const data = entry ? {
-    translation: entry.t,
-    definition: entry.d,
-    synonyms: (entry.s && entry.s.length > 0) ? entry.s : [`similar_${cleanWord}`, `related_${cleanWord}`]
-  } : {
-    translation: `Перевод: ${cleanWord}`,
-    definition: `Academic definition for "${cleanWord}" in the context of IELTS reading.`,
-    synonyms: [`synonym1_${cleanWord}`, `synonym2_${cleanWord}`]
+  const getSmartTranslation = (w: string) => {
+    if (entry) {
+      return {
+        translation: entry.t,
+        definition: entry.d,
+        synonyms: (entry.s && entry.s.length > 0) ? entry.s : [w + '_equivalent', 'alternative term', 'academic synonym']
+      };
+    }
+
+    let translation = "академический термин в контексте";
+    let definition = "Contextual academic vocabulary item from IELTS reading passages.";
+    let synonyms = [`similar_${w}`, `${w}_alternative`, `equivalent_term`];
+
+    if (w.endsWith('tion') || w.endsWith('sion')) {
+      translation = "процесс / результат действия";
+      definition = "An action, process, or resulting state in academic context.";
+      const base = w.replace(/(ti|si)on$/, '');
+      synonyms = [`${base}ing`, `process of ${base}`, `establishment`];
+    } else if (w.endsWith('ment')) {
+      translation = "действие / результат / объект";
+      definition = "An instrument, means, or result of action.";
+      const base = w.replace(/ment$/, '');
+      synonyms = [`${base}ing`, `result of ${base}`, `facility`];
+    } else if (w.endsWith('ly')) {
+      translation = "наречие / образ действия";
+      definition = "In a manner characterized by or showing the quality.";
+      const base = w.replace(/ly$/, '');
+      synonyms = [`greatly`, `substantially`, `significantly`];
+    } else if (w.endsWith('ing')) {
+      translation = "процесс / текущее действие / свойство";
+      definition = "The active process or state of carrying out an action.";
+      const base = w.replace(/ing$/, '');
+      synonyms = [`${base}ing process`, `developing ${base}`, `ongoing ${base}`];
+    } else if (w.endsWith('ed')) {
+      translation = "причастие / результат / обладающий свойством";
+      definition = "Having undergone a specific action or state.";
+      const base = w.replace(/ed$/, '');
+      synonyms = [`completed ${base}`, `${base}ed version`, `affected`];
+    } else if (w.endsWith('er') || w.endsWith('or')) {
+      translation = "устройство / прибор / исполнитель";
+      definition = "An instrument or person performing a specific function.";
+      const base = w.replace(/(er|or)$/, '');
+      synonyms = [`device`, `operator`, `instrument`];
+    } else if (w.endsWith('ity') || w.endsWith('ty')) {
+      translation = "состояние / качество / степень";
+      definition = "The quality, state, or degree of a condition.";
+      const base = w.replace(/(ity|ty)$/, '');
+      synonyms = [`property of ${base}`, `capacity`, `degree`];
+    } else if (w.endsWith('able') || w.endsWith('ible')) {
+      translation = "способный к / допускающий / возможный";
+      definition = "Capable of being achieved or experienced.";
+      const base = w.replace(/(able|ible)$/, '');
+      synonyms = [`achievable`, `feasible`, `possible`];
+    } else if (w.endsWith('al')) {
+      translation = "относящийся к / свойственный";
+      definition = "Relating to or connected with a specific domain.";
+      const base = w.replace(/al$/, '');
+      synonyms = [`${base} related`, `pertaining to ${base}`, `associated`];
+    } else if (w.endsWith('ful')) {
+      translation = "полный качества / обладающий";
+      definition = "Full of or characterized by a specific property.";
+      const base = w.replace(/ful$/, '');
+      synonyms = [`abundant in ${base}`, `rich in ${base}`, `filled`];
+    } else if (w.endsWith('less')) {
+      translation = "лишенный / без-";
+      definition = "Without or lacking a specific attribute.";
+      const base = w.replace(/less$/, '');
+      synonyms = [`lacking ${base}`, `devoid of ${base}`, `free from ${base}`];
+    }
+
+    return { translation, definition, synonyms };
   };
+
+  const data = getSmartTranslation(cleanWord);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200" onClick={onClose}>
@@ -786,5 +854,10 @@ const ProgressView = ({ completedPassages, savedWords, quizScores }: any) => {
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
+const container = document.getElementById('root')!;
+let root = (window as any).__root;
+if (!root) {
+  root = createRoot(container);
+  (window as any).__root = root;
+}
 root.render(<App />);
